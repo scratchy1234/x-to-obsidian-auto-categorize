@@ -51,7 +51,7 @@ All paths below use config values. `{vault}` = `config.vault_path`, `{inbox}` = 
 
 1. Run via Bash:
    ```
-   OUTPUT_DIR=/tmp/feedgrab-x2o X_BOOKMARKS_ENABLED=true feedgrab https://x.com/i/bookmarks
+   OUTPUT_DIR=/tmp/feedgrab-x2o X_BOOKMARKS_ENABLED=true FEEDGRAB_DATA_DIR={config.sessions_path} feedgrab https://x.com/i/bookmarks
    ```
 
 2. Read all `.md` files from `/tmp/feedgrab-x2o/X/bookmarks/all/`. For each file, extract from YAML frontmatter:
@@ -90,7 +90,7 @@ For each URL, use this 2-level fallback chain (only proceed to next level on fai
 ```
 Path A (feedgrab):
   tmpdir=$(mktemp -d /tmp/feedgrab-XXXXXX)
-  Run: OUTPUT_DIR=$tmpdir FORCE_REFETCH=true feedgrab <URL>
+  Run: OUTPUT_DIR=$tmpdir FORCE_REFETCH=true FEEDGRAB_DATA_DIR={config.sessions_path} feedgrab <URL>
   Read the .md file in $tmpdir/X/status/ (isolated dir, single file)
   → Success (file exists) → structured Markdown with thread, QT, frontmatter → Step 2
   → Failure (non-zero exit or no file) → Path B
@@ -313,25 +313,30 @@ Twitter/X authentication is **required** — feedgrab needs it for both bookmark
 
 Ask: "How would you like to authenticate with X? (auto/manual)"
 
-- **auto** → Extract cookies from Chrome automatically:
-  ```python
-  import browser_cookie3, json
+- **auto** → Extract cookies from Chrome automatically. Run via Bash (replace `{sessions_path}` with Q1's vault path sibling dir, e.g. `~/.feedgrab`):
+  ```bash
+  mkdir -p {sessions_path}
+  python3 -c "
+  import browser_cookie3, json, os
   cj = browser_cookie3.chrome(domain_name='.x.com')
-  cookies = [{"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
+  cookies = [{'name': c.name, 'value': c.value, 'domain': c.domain, 'path': c.path}
              for c in cj if c.name in ('auth_token', 'ct0', 'twid')]
-  json.dump({"cookies": cookies, "origins": []}, open('~/.feedgrab/twitter.json','w'), indent=2)
+  path = os.path.expanduser('{sessions_path}/twitter.json')
+  json.dump({'cookies': cookies, 'origins': []}, open(path, 'w'), indent=2)
+  print(f'Extracted {len(cookies)} cookies → {path}')
+  "
   ```
-  Run this via Bash (expand `~`). Output: "✅ Cookies extracted from Chrome. Make sure Chrome is logged into x.com."
-  Set `phase0_enabled: true`.
+  Output: "✅ Cookies extracted from Chrome. Make sure Chrome is logged into x.com."
+  Store `sessions_path` in config. Set `phase0_enabled: true`.
 
-- **manual** → Output:
+- **manual** → Ask: "Where do you want to store feedgrab session files? (default: `~/.feedgrab`)"
+  Store answer as `sessions_path`.
+  Output:
   ```
-  Run this in your terminal:
-    feedgrab login twitter
+  Open Chrome, log into x.com, then run:
 
-  If X rejects the automated login, extract cookies manually:
-  1. Open Chrome and log into x.com
-  2. Run: python3 -c "import browser_cookie3, json; cj = browser_cookie3.chrome(domain_name='.x.com'); cookies = [{'name': c.name, 'value': c.value, 'domain': c.domain, 'path': c.path} for c in cj if c.name in ('auth_token','ct0','twid')]; json.dump({'cookies': cookies, 'origins': []}, open('{sessions_path}/twitter.json','w'), indent=2)"
+  mkdir -p {sessions_path}
+  python3 -c "import browser_cookie3, json, os; cj = browser_cookie3.chrome(domain_name='.x.com'); cookies = [{'name': c.name, 'value': c.value, 'domain': c.domain, 'path': c.path} for c in cj if c.name in ('auth_token','ct0','twid')]; json.dump({'cookies': cookies, 'origins': []}, open('{sessions_path}/twitter.json','w'), indent=2)"
 
   Once done, tell me and I'll continue.
   ```
@@ -360,6 +365,7 @@ inbox_dir: {Q2}
 urls_file: Twitter-URLs.md
 index_file: _index.md
 processed_ids_path: ./data/processed_ids.json
+sessions_path: {Q6_sessions_path}
 index_scan_dirs: {Q3}
 user_perspective: "{Q4}"
 phase0_enabled: {Q6}
