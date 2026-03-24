@@ -45,18 +45,20 @@ All paths below use config values. `{vault}` = `config.vault_path`, `{inbox}` = 
 > Skipped when user says "distribute only" or "skip bookmarks".
 > Also skipped when `config.phase0_enabled` is `false`.
 
-**Requires**: feedgrab installed and authenticated with X (via `feedgrab login twitter`).
+**Requires**: feedgrab installed and authenticated with X.
+
+> **Authentication note**: `feedgrab login twitter` is rejected by X's bot detection. Use browser-cookie3 to extract cookies from Chrome automatically (done during Setup — see Q6).
 
 1. Run via Bash:
    ```
-   OUTPUT_DIR=/tmp/feedgrab-x2o feedgrab https://x.com/i/bookmarks
+   OUTPUT_DIR=/tmp/feedgrab-x2o X_BOOKMARKS_ENABLED=true feedgrab https://x.com/i/bookmarks
    ```
 
-2. Read all `.md` files from `/tmp/feedgrab-x2o/X/`. For each file, extract from YAML frontmatter:
-   - `original_link` → tweet URL
-   - `author` → handle
+2. Read all `.md` files from `/tmp/feedgrab-x2o/X/bookmarks/all/`. For each file, extract from YAML frontmatter:
+   - `source` → tweet URL
+   - `author` list first item → handle
    - `title` or first line of body → title (truncate to 60 chars)
-   - `tweet_id` or parse ID from `original_link`
+   - Parse tweet ID from `source` URL (`/status/(\d+)` part)
 
 3. Read `{config.processed_ids_path}` (auto-created as `[]` if not found) to filter already-processed IDs. Read `{vault}/{inbox}/{urls_file}` to filter URLs already in the file. After two rounds of filtering, get the truly new bookmarks.
 
@@ -87,11 +89,11 @@ For each URL, use this 2-level fallback chain (only proceed to next level on fai
 
 ```
 Path A (feedgrab):
-  Run: OUTPUT_DIR=/tmp/feedgrab-x2o feedgrab <URL>
-  Find the newest .md file in /tmp/feedgrab-x2o/X/
-  Read its content (includes thread, QT, YAML frontmatter)
-  → Success → structured Markdown → Step 2
-  → Failure (non-zero exit or no file created) → Path B
+  tmpdir=$(mktemp -d /tmp/feedgrab-XXXXXX)
+  Run: OUTPUT_DIR=$tmpdir FORCE_REFETCH=true feedgrab <URL>
+  Read the .md file in $tmpdir/X/status/ (isolated dir, single file)
+  → Success (file exists) → structured Markdown with thread, QT, frontmatter → Step 2
+  → Failure (non-zero exit or no file) → Path B
 
 Path B (WebFetch):
   WebFetch(URL)
@@ -99,7 +101,9 @@ Path B (WebFetch):
   → Failure → Mark as UDF, continue to next URL
 ```
 
-Record which path each URL used for the Step 5 report. Map: Path A = `feedgrab`, Path B = `webfetch`, failure = `UDF`. This value also goes into the note's frontmatter `fetch_mode` field.
+> Use a fresh `mktemp` tmpdir per URL to avoid feedgrab's internal dedup cache skipping already-fetched tweets.
+
+Record which path each URL used for the Step 5 report. Map: Path A = `feedgrab`, Path B = `webfetch`, failure = `UDF`.
 
 ## Step 2: Generate Note
 
@@ -144,16 +148,18 @@ Section generation rules:
 ```yaml
 ---
 created: YYYY-MM-DD
+published: YYYY-MM-DD
 status: inbox
 source: twitter | article (use "article" when URL contains /articles/ or content is long-form X Article)
 domain: AI/Invest/etc.
 original_link: https://...
 author: "@username"
 has_qt: true/false
-fetch_mode: feedgrab/webfetch
 tags: [inbox, keywords]
 ---
 ```
+
+`published` — extract from feedgrab frontmatter's `published` field. `has_qt` — set to `true` when feedgrab output contains a quoted tweet (check `quotes` field > 0 or embedded QT content).
 
 **File naming**: `domain-prefix-Title.md` (rules in prefix-rules.md)
 
