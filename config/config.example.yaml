@@ -1,0 +1,31 @@
+# x-to-obsidian configuration
+# Copy this file to config.yaml and customize for your vault
+
+# Obsidian vault root path
+vault_path: ~/my-vault
+
+# Directory names (relative to vault_path)
+inbox_dir: 00_Inbox
+urls_file: Twitter-URLs.md
+index_file: _index.md
+
+# x-tweet-fetcher script path (https://github.com/ythx-101/x-tweet-fetcher)
+fetcher_path: ~/x-tweet-fetcher/scripts/fetch_tweet.py
+
+# Deduplication file for Phase 0 (auto-created on first run)
+processed_ids_path: ./data/processed_ids.json
+
+# Directories to scan for existing notes (for "Related Notes" matching)
+# These directories should contain _index.md files
+index_scan_dirs:
+  - 50_AI
+  - 60_Investment
+  - 01_Plans
+
+# Your perspective — used in "Why it matters" and "Triggered thoughts" sections
+# Example: "AI builder and crypto investor", "frontend developer", "startup founder"
+user_perspective: "AI builder and crypto investor"
+
+# Phase 0: Auto-pull bookmarks from X via Chrome MCP
+# Set to false if you don't have Claude in Chrome, or prefer manual URL input
+phase0_enabled: true
