@@ -45,25 +45,30 @@ git clone https://github.com/ythx-101/x-to-obsidian ~/my-vault/.agents/skills/x-
 git clone https://github.com/ythx-101/x-to-obsidian ~/x-to-obsidian
 ```
 
-### 3. Configure
+### 3. Run — Setup Wizard Auto-Starts
 
-```bash
-cd ~/my-vault/.agents/skills/x-to-obsidian  # or wherever you cloned
-cp config/config.example.yaml config/config.yaml
-cp config/prefix-rules.example.md config/prefix-rules.md
+Just invoke the skill. No manual config needed — the setup wizard runs automatically on first use:
+
+```
+/x-to-obsidian
 ```
 
-Edit `config/config.yaml`:
-- Set `vault_path` to your Obsidian vault root
-- Set `fetcher_path` to your x-tweet-fetcher install location
-- Customize `inbox_dir`, `index_scan_dirs`, and `user_perspective`
+The wizard walks you through:
+1. **Vault path** — where's your Obsidian vault?
+2. **Inbox directory** — where should new notes go?
+3. **Domain directories** — which folders to scan for related notes?
+4. **Your perspective** — shapes "Why it matters" in every note
+5. **x-tweet-fetcher** — installed? where?
+6. **Chrome MCP** — auto-pull bookmarks or manual?
+7. **Prefix system** — use defaults or customize?
 
-Edit `config/prefix-rules.md`:
-- Customize prefix definitions and routing rules to match your vault structure
+It validates each input, creates missing directories, generates your `config.yaml` and `prefix-rules.md`, and optionally runs a test with a sample URL.
+
+> **Prefer manual setup?** Copy `config/config.example.yaml` → `config/config.yaml` and edit directly. See [docs/setup.md](docs/setup.md).
 
 ### 4. Run
 
-In Claude Code, invoke the skill:
+After setup, same command for normal use:
 
 ```
 /x-to-obsidian
