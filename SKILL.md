@@ -1,5 +1,5 @@
 ---
-name: x-to-obsidian
+name: x-to-obsidian-auto-categorize
 description: Full pipeline — pull X bookmarks, summarize into Obsidian notes, distribute to domain directories
 ---
 You are the executor of an Obsidian auto-categorization system.
@@ -45,63 +45,30 @@ All paths below use config values. `{vault}` = `config.vault_path`, `{inbox}` = 
 > Skipped when user says "distribute only" or "skip bookmarks".
 > Also skipped when `config.phase0_enabled` is `false`.
 
-**Requires**: Chrome running with x.com logged in, and Claude in Chrome MCP extension.
+**Requires**: feedgrab installed and authenticated with X (via `feedgrab login twitter`).
 
-1. Get tab context via `mcp__Claude_in_Chrome__tabs_context_mcp` (createIfEmpty: true)
-2. Navigate to `https://x.com/i/bookmarks` via `mcp__Claude_in_Chrome__navigate`
-3. Wait 2 seconds for page load
-4. Extract visible bookmarks via `mcp__Claude_in_Chrome__javascript_tool`:
+1. Run via Bash:
+   ```
+   OUTPUT_DIR=/tmp/feedgrab-x2o feedgrab https://x.com/i/bookmarks
+   ```
 
-```javascript
-const extractLinks = () => {
-  const links = [];
-  document.querySelectorAll('a[href*="/status/"]').forEach(a => {
-    const href = a.href;
-    const match = href.match(/x\.com\/(\w+)\/status\/(\d+)/);
-    if (match && !links.find(l => l.id === match[2])) {
-      const tweetEl = a.closest('[data-testid="tweet"]');
-      const textEl = tweetEl?.querySelector('[data-testid="tweetText"]');
-      const articleTitle = tweetEl?.querySelector('[data-testid="article-cover-title"], [data-testid="card.layoutSmall.detail"] span, h2');
-      const rawTitle = textEl?.innerText || articleTitle?.innerText || '';
-      links.push({
-        id: match[2],
-        url: href,
-        title: rawTitle.split('\n')[0].slice(0, 60) || `@${match[1]}`
-      });
-    }
-  });
-  return links;
-};
-JSON.stringify(extractLinks());
-```
+2. Read all `.md` files from `/tmp/feedgrab-x2o/X/`. For each file, extract from YAML frontmatter:
+   - `original_link` → tweet URL
+   - `author` → handle
+   - `title` or first line of body → title (truncate to 60 chars)
+   - `tweet_id` or parse ID from `original_link`
 
-5. Scroll to load more, extract again, merge and deduplicate by ID:
+3. Read `{config.processed_ids_path}` (auto-created as `[]` if not found) to filter already-processed IDs. Read `{vault}/{inbox}/{urls_file}` to filter URLs already in the file. After two rounds of filtering, get the truly new bookmarks.
 
-```javascript
-(async () => {
-  for (let i = 0; i < 3; i++) {
-    window.scrollTo(0, document.documentElement.scrollHeight);
-    await new Promise(r => setTimeout(r, 1500));
-  }
-  return 'scrolled';
-})()
-```
-
-Run `extractLinks()` again, merge both results by ID.
-
-6. Read `{config.processed_ids_path}` (relative to this skill's directory; auto-created as `[]` if not found) to filter already-processed IDs. Read `{vault}/{inbox}/{urls_file}` to filter URLs already in the file. After two rounds of filtering, get the truly new bookmarks.
-
-7. **Two paths**:
-   - New bookmarks found → Append to `{vault}/{inbox}/{urls_file}`, append to `processed_ids.json`, continue to Phase 1
+4. **Two paths**:
+   - New bookmarks found → Append to `{vault}/{inbox}/{urls_file}`, append IDs to `processed_ids.json`, continue to Phase 1
    - No new bookmarks → Check if `{urls_file}` has content:
      - Has content → proceed to Phase 1
      - Empty → Output "No new bookmarks, {urls_file} is empty, skipping." → End
 
    Write format: `- YYYY-MM-DD [Title](URL)`
 
-8. Close the bookmarks tab via `mcp__Claude_in_Chrome__tabs_close_mcp`.
-
-**Fallback (Chrome unavailable)**: Skip Phase 0. If `{vault}/{inbox}/{urls_file}` has content, proceed to Phase 1. If empty, output "Chrome unavailable and no pending URLs. Nothing to process." → End.
+**Fallback (feedgrab unavailable or auth failed)**: Skip Phase 0. If `{vault}/{inbox}/{urls_file}` has content, proceed to Phase 1. If empty, output "feedgrab unavailable and no pending URLs. Nothing to process." → End.
 
 ---
 
@@ -116,26 +83,23 @@ Run `extractLinks()` again, merge both results by ID.
 
 ## Step 1: Fetch Each URL
 
-For each URL, use this 3-level fallback chain (only proceed to next level on failure):
+For each URL, use this 2-level fallback chain (only proceed to next level on failure):
 
 ```
-Path A (x-tweet-fetcher):
-  python3 {config.fetcher_path} --url <URL> --text-only
-  → Success → structured text (original + QT) → Step 2
-  → Failure → Path B
+Path A (feedgrab):
+  Run: OUTPUT_DIR=/tmp/feedgrab-x2o feedgrab <URL>
+  Find the newest .md file in /tmp/feedgrab-x2o/X/
+  Read its content (includes thread, QT, YAML frontmatter)
+  → Success → structured Markdown → Step 2
+  → Failure (non-zero exit or no file created) → Path B
 
-Path B (Jina Reader):
-  WebFetch("https://r.jina.ai/" + URL)
-  → Success → Markdown content → Step 2
-  → Failure → Path C
-
-Path C (WebFetch):
+Path B (WebFetch):
   WebFetch(URL)
-  → Success → plain text → Step 2
+  → Success → raw text → Step 2
   → Failure → Mark as UDF, continue to next URL
 ```
 
-Record which path each URL used for the Step 5 report. Map: Path A = `fetcher`, Path B = `jina`, Path C = `webfetch`, failure = `UDF`. This value also goes into the note's frontmatter `fetch_mode` field.
+Record which path each URL used for the Step 5 report. Map: Path A = `feedgrab`, Path B = `webfetch`, failure = `UDF`. This value also goes into the note's frontmatter `fetch_mode` field.
 
 ## Step 2: Generate Note
 
@@ -186,7 +150,7 @@ domain: AI/Invest/etc.
 original_link: https://...
 author: "@username"
 has_qt: true/false
-fetch_mode: fetcher/jina/webfetch
+fetch_mode: feedgrab/webfetch
 tags: [inbox, keywords]
 ---
 ```
@@ -210,9 +174,8 @@ Output report:
 ## Phase 1 Complete
 
 Processed X bookmarks:
-- x-tweet-fetcher: Y
-- Jina Reader fallback: Z1
-- WebFetch fallback: Z2
+- feedgrab: Y
+- WebFetch fallback: Z
 - UDF: W
 
 Written to inbox:
@@ -283,7 +246,7 @@ Inbox remaining: 0 files
 
 > Triggered automatically when `config/config.yaml` does not exist.
 
-Output: "👋 Welcome to **x-to-obsidian**! Let's set up your configuration. I'll ask a few questions."
+Output: "👋 Welcome to **x-to-obsidian-auto-categorize**! Let's set up your configuration. I'll ask a few questions."
 
 ## Q1: Vault Path
 
@@ -318,23 +281,58 @@ Ask: "Describe yourself in one line — this shapes the 'Why it matters' and 'Ac
 
 - Store as `user_perspective`.
 
-## Q5: x-tweet-fetcher
+## Q5: feedgrab + browser-cookie3
 
-Ask: "Do you have [x-tweet-fetcher](https://github.com/ythx-101/x-tweet-fetcher) installed? (y/n)"
+feedgrab and browser-cookie3 are **required** for this skill to function. Install both automatically:
 
-- **y** → Ask: "Path to `fetch_tweet.py`? (e.g. `~/x-tweet-fetcher/scripts/fetch_tweet.py`)"
-  - Validate: Check file exists with `ls`.
-  - Not found → warn, ask again or skip.
-  - Store as `fetcher_path`.
-- **n** → Output: "No problem — tweets will be fetched via Jina Reader and WebFetch as fallback. You can install it later."
-  - Set `fetcher_path: ""` (empty, will skip Path A in fallback chain).
+1. Check feedgrab: run `which feedgrab` via Bash.
+   - **Not found** → Output: "Installing feedgrab..." → Run:
+     ```
+     pip3 install "feedgrab[all] @ git+https://github.com/iBigQiang/feedgrab.git"
+     ```
+   - **Found** → Output: "✅ feedgrab detected."
 
-## Q6: Chrome MCP
+2. Check browser-cookie3: run `python3 -c "import browser_cookie3"` via Bash.
+   - **Not found** → Output: "Installing browser-cookie3..." → Run:
+     ```
+     pip3 install browser-cookie3
+     ```
+   - **Found** → Output: "✅ browser-cookie3 detected."
 
-Ask: "Do you have the Claude in Chrome MCP extension? This enables auto-pulling bookmarks from X. (y/n)"
+## Q6: X Authentication (Required)
 
-- **y** → Set `phase0_enabled: true`.
-- **n** → Set `phase0_enabled: false`. Output: "No problem — you can manually paste URLs into `{inbox}/{urls_file}` instead."
+Twitter/X authentication is **required** — feedgrab needs it for both bookmark sync (Phase 0) and full-fidelity tweet fetching (Phase 1).
+
+> Note: `feedgrab login twitter` may be rejected by X's bot detection. The recommended method is to extract cookies from your Chrome browser automatically.
+
+Ask: "How would you like to authenticate with X? (auto/manual)"
+
+- **auto** → Extract cookies from Chrome automatically:
+  ```python
+  import browser_cookie3, json
+  cj = browser_cookie3.chrome(domain_name='.x.com')
+  cookies = [{"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
+             for c in cj if c.name in ('auth_token', 'ct0', 'twid')]
+  json.dump({"cookies": cookies, "origins": []}, open('~/.feedgrab/twitter.json','w'), indent=2)
+  ```
+  Run this via Bash (expand `~`). Output: "✅ Cookies extracted from Chrome. Make sure Chrome is logged into x.com."
+  Set `phase0_enabled: true`.
+
+- **manual** → Output:
+  ```
+  Run this in your terminal:
+    feedgrab login twitter
+
+  If X rejects the automated login, extract cookies manually:
+  1. Open Chrome and log into x.com
+  2. Run: python3 -c "import browser_cookie3, json; cj = browser_cookie3.chrome(domain_name='.x.com'); cookies = [{'name': c.name, 'value': c.value, 'domain': c.domain, 'path': c.path} for c in cj if c.name in ('auth_token','ct0','twid')]; json.dump({'cookies': cookies, 'origins': []}, open('{sessions_path}/twitter.json','w'), indent=2)"
+
+  Once done, tell me and I'll continue.
+  ```
+  Wait for user confirmation before proceeding.
+  Set `phase0_enabled: true`.
+
+Verify authentication: run `feedgrab doctor x 2>&1 | grep "Twitter cookies"` and confirm `✅ auth_token` is present.
 
 ## Q7: Prefix System
 
@@ -355,7 +353,6 @@ vault_path: {Q1}
 inbox_dir: {Q2}
 urls_file: Twitter-URLs.md
 index_file: _index.md
-fetcher_path: {Q5}
 processed_ids_path: ./data/processed_ids.json
 index_scan_dirs: {Q3}
 user_perspective: "{Q4}"
@@ -376,6 +373,6 @@ Output: "✅ Setup complete! Want to do a test run with a sample URL? (y/n)"
   - Execute Phase 1 Step 1-2 on this single URL.
   - Show the generated note to the user.
   - Ask: "How does this look? If good, I'll save it. Otherwise I can adjust the template."
-    - Good → Write to inbox, update index. Output: "🎉 All set! Run `/x-to-obsidian` anytime to process your bookmarks."
+    - Good → Write to inbox, update index. Output: "🎉 All set! Run `/x-to-obsidian-auto-categorize` anytime to process your bookmarks."
     - Adjust → Let user describe what to change, modify `templates/Twitter_Note.md` accordingly, re-run.
-- **n** → Output: "🎉 All set! Run `/x-to-obsidian` anytime to process your bookmarks."
+- **n** → Output: "🎉 All set! Run `/x-to-obsidian-auto-categorize` anytime to process your bookmarks."
