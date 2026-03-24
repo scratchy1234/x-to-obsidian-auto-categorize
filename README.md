@@ -2,6 +2,8 @@
 
 Automatically pull, summarize, and categorize your X/Twitter bookmarks into an Obsidian vault using Claude Code.
 
+English | [中文](README_CN.md)
+
 ## What It Does
 
 ```
@@ -164,6 +166,10 @@ A: Yes. Edit `config/prefix-rules.md` — add a new section following the existi
 
 **Q: Does it support non-Twitter URLs?**
 A: feedgrab supports arbitrary URLs with Jina as internal fallback. The note template is optimized for tweets but works for general web content.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=scratchy1234/x-to-obsidian-auto-categorize&type=Date)](https://star-history.com/#scratchy1234/x-to-obsidian-auto-categorize&Date)
 
 ## License
 
