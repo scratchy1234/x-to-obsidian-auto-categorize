@@ -4,6 +4,8 @@ Automatically pull, summarize, and categorize your X/Twitter bookmarks into an O
 
 English | [中文](README_CN.md)
 
+> **Archived (legacy v1).** This repository is no longer maintained as the active workflow. It documents an earlier X-to-Obsidian pipeline that automatically pulled bookmarks, summarized them, and distributed notes. Current work has moved to a decision-first workflow where Leo makes key decisions and the AI executes approved work. This repository remains available for historical reference; no new releases are planned.
+
 ## What It Does
 
 ```
